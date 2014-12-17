@@ -8,11 +8,15 @@
 
 #import "LocationManager.h"
 #import <CoreLocation/CoreLocation.h>
+#import <CoreMotion/CoreMotion.h>
 #import "CoordinateTransform.h"
 
 @interface LocationManager () <CLLocationManagerDelegate>
 
 @property (nonatomic, strong) CLLocationManager *locationManager;
+@property (nonatomic, strong) CMMotionActivityManager *motionActivityManager;
+
+@property (nonatomic, assign) MotionType motion;
 
 @end
 
@@ -36,7 +40,11 @@
         _locationManager.distanceFilter = 10.0f;
         _locationManager.pausesLocationUpdatesAutomatically = NO;
         
+        self.motionActivityManager = [[CMMotionActivityManager alloc] init];
+        
         self.locationDB = [[LocationDB alloc] init];
+        
+        self.motion = Motion_Unknown;
     }
     
     return self;
@@ -46,11 +54,29 @@
     [_locationManager requestAlwaysAuthorization];
     [_locationManager startUpdatingLocation];
     [_locationManager startMonitoringSignificantLocationChanges];
+    
+    NSOperationQueue* queue = [[NSOperationQueue alloc] init];
+    [_motionActivityManager startActivityUpdatesToQueue:queue withHandler: ^(CMMotionActivity *activity) {
+        
+        if (activity.walking) {
+            _motion = Motion_Walking;
+        } else if (activity.running) {
+            _motion = Motion_Running;
+        } else if (activity.automotive) {
+            _motion = Motion_Automotive;
+        } else if (activity.stationary) {
+            _motion = Motion_Stationary;
+        } else {
+            _motion = Motion_Unknown;
+        }
+    }];
 }
 
 - (void)stopLocation {
     [_locationManager stopUpdatingLocation];
     [_locationManager stopMonitoringSignificantLocationChanges];
+    
+    [_motionActivityManager stopActivityUpdates];
 }
 
 #pragma mark - CLLocationManagerDelegate
@@ -68,9 +94,14 @@
 }
 
 - (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations {
+    
+    CLLocation *location = [locations lastObject];
+    
     LocationInfo *info = [[LocationInfo alloc] init];
-    info.coordinate = transformFromWGSToGCJ([[locations lastObject] coordinate]);
+    info.coordinate = transformFromWGSToGCJ([location coordinate]);
     info.date = [[NSDate date] stringOfDateWithFormatYYYYMMddHHmmssSSS];
+    info.motion = _motion;
+    info.speed = [location speed];
     
     [_locationDB insertLocation:info];
 }
