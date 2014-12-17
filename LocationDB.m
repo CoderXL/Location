@@ -20,6 +20,22 @@ static NSString *sqlQueryTable = @"SELECT * FROM LocationInfoList WHERE Location
     _speed = speed * 3.6f;
 }
 
+- (NSString *)toString {
+    return [NSString stringWithFormat:@"%f,%f,%f,%zd,%@\n", self.coordinate.latitude, self.coordinate.longitude, self.speed, self.motion, self.date];
+}
+
+- (id)initWithString:(NSString *)string {
+    if ((self = [super init])) {
+        NSArray *array = [string componentsSeparatedByString:@","];
+        _coordinate = CLLocationCoordinate2DMake([array[0] doubleValue], [array[1] doubleValue]);
+        _speed = [array[2] doubleValue];
+        _motion = [array[3] integerValue];
+        _date = array[4];
+    }
+    
+    return self;
+}
+
 @end
 
 @interface LocationDB ()
@@ -83,6 +99,33 @@ static NSString *sqlQueryTable = @"SELECT * FROM LocationInfoList WHERE Location
          [NSNumber numberWithInteger:info.motion],
          info.date,
          [NSDate date]];
+        
+        if ([db hadError]) {
+            JBLog(JL_ERROR, @"Fail to insert LocationInfo to LocationInfo.sqlite, %d, %@", [db lastErrorCode], [db lastErrorMessage]);
+            *rollback = YES;
+            result = NO;
+            
+            [LocationFile writeToFile:info];
+        }
+        result = YES;
+    }];
+    
+    return result;
+}
+
+- (BOOL)insertLocations:(NSArray *)infos {
+    __block BOOL result = NO;
+    [self.dbQueue inTransaction:^(FMDatabase *db, BOOL *rollback) {
+        
+        for (LocationInfo *info in infos) {
+            [db executeUpdate:sqlInsertTable,
+             [NSNumber numberWithDouble:info.coordinate.latitude],
+             [NSNumber numberWithDouble:info.coordinate.longitude],
+             [NSNumber numberWithDouble:info.speed],
+             [NSNumber numberWithInteger:info.motion],
+             info.date,
+             [NSDate date]];
+        }
         
         if ([db hadError]) {
             JBLog(JL_ERROR, @"Fail to insert LocationInfo to LocationInfo.sqlite, %d, %@", [db lastErrorCode], [db lastErrorMessage]);

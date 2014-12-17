@@ -25,11 +25,17 @@ typedef NS_ENUM(NSUInteger, MotionType){
 @property (nonatomic, assign) MotionType motion;
 @property (nonatomic, copy) NSString *date;
 
+- (NSString *)toString;
+
+- (id)initWithString:(NSString *)string;
+
 @end
 
 @interface LocationDB : NSObject
 
 - (BOOL)insertLocation:(LocationInfo *)info;
+
+- (BOOL)insertLocations:(NSArray *)infos;
 
 - (NSArray *)queryLocationInfosWithDate:(NSString *)date;
 
