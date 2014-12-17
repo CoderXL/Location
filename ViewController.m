@@ -9,6 +9,7 @@
 #import "ViewController.h"
 #import <MapKit/MapKit.h>
 #import <ActionSheetDatePicker.h>
+#import "MKCustomerPolyline.h"
 
 @interface ViewController () <MKMapViewDelegate>
 @property (weak, nonatomic) IBOutlet MKMapView *mapView;
@@ -24,6 +25,8 @@
     
     _mapView.mapType = MKMapTypeStandard;
     _mapView.showsUserLocation = YES;
+    _mapView.pitchEnabled = NO;
+    _mapView.rotateEnabled = NO;
     
     [self refresh];
 }
@@ -49,11 +52,11 @@
 - (void)refresh {
     NSArray *locations = [[LocationManager shareInstance].locationDB queryLocationInfosWithDate:[[NSDate date] stringOfDateWithFormatYYYYMMdd]];
     if (locations) {
-        [self addPathToMapWithTripPoints:locations];
+        [self addPathToMapWithLocationPoints:locations];
     }
 }
 
-- (void)addPathToMapWithTripPoints:(NSArray *)locations
+- (void)addPathToMapWithLocationPoints:(NSArray *)locations
 {
     [_mapView removeOverlays:_mapView.overlays];
     
@@ -67,7 +70,31 @@
     [_mapView addOverlay:pathLine];
     free(points);
     
-    [_mapView setVisibleMapRect:pathLine.boundingMapRect edgePadding:UIEdgeInsetsMake(20, 20, 20, 20) animated:YES];
+    [_mapView setVisibleMapRect:pathLine.boundingMapRect edgePadding:UIEdgeInsetsMake(0, 0, 0, 0) animated:YES];
+
+    NSMutableArray *motionArray = [NSMutableArray array];
+    for (NSInteger index = 0; index < locations.count; index++) {
+        if (index==0 ||
+            ((LocationInfo*)locations[index-1]).motion != ((LocationInfo*)locations[index]).motion) {
+            [motionArray addObject:[NSMutableArray array]];
+        }
+        
+        [[motionArray lastObject] addObject:locations[index]];
+    }
+    
+    for (NSMutableArray *array in motionArray) {
+        MKMapPoint *points = malloc(sizeof(MKMapPoint) * array.count);
+        for (int index = 0; index < array.count; index++) {
+            LocationInfo *info = [array objectAtIndex:index];
+            points[index] = MKMapPointForCoordinate(info.coordinate);
+        }
+        
+        MKCustomerPolyline *pathLine = [MKCustomerPolyline polylineWithPoints:points count:array.count];
+        pathLine.motionType = ((LocationInfo *)array[0]).motion;
+        [_mapView addOverlay:pathLine];
+        free(points);
+    }
+    
 }
 
 #pragma mark -
@@ -80,7 +107,7 @@
                                      doneBlock:^(ActionSheetDatePicker *picker, id selectedDate, id origin) {
                                          NSArray *locations = [[LocationManager shareInstance].locationDB queryLocationInfosWithDate:[(NSDate *)selectedDate stringOfDateWithFormatYYYYMMdd]];
                                          if (locations.count > 1) {
-                                             [self addPathToMapWithTripPoints:locations];
+                                             [self addPathToMapWithLocationPoints:locations];
                                          }
                                      } cancelBlock:^(ActionSheetDatePicker *picker) {
                                          
@@ -92,13 +119,48 @@
 
 - (MKOverlayView *)mapView:(MKMapView *)mapView viewForOverlay:(id<MKOverlay>)overlay
 {
-    if ([overlay isKindOfClass:[MKPolyline class]]) {
-        MKPolylineView *routeLineView = [[MKPolylineView alloc] initWithPolyline:(MKPolyline*)overlay];
-        routeLineView.fillColor = [UIColor redColor];
-        routeLineView.strokeColor = [UIColor redColor];
+    if ([overlay isKindOfClass:[MKCustomerPolyline class]]) {
+        MKPolylineView *routeLineView = [[MKPolylineView alloc] initWithPolyline:(MKCustomerPolyline*)overlay];
+        
+        switch (((MKCustomerPolyline*)overlay).motionType) {
+            case Motion_Stationary:
+                routeLineView.fillColor = [UIColor blueColor];
+                routeLineView.strokeColor = [UIColor blueColor];
+                break;
+            case Motion_Walking:
+                routeLineView.fillColor = [UIColor greenColor];
+                routeLineView.strokeColor = [UIColor greenColor];
+                break;
+            case Motion_Running:
+                routeLineView.fillColor = [UIColor yellowColor];
+                routeLineView.strokeColor = [UIColor yellowColor];
+                break;
+            case Motion_Automotive:
+                routeLineView.fillColor = [UIColor redColor];
+                routeLineView.strokeColor = [UIColor redColor];
+                break;
+            case Motion_Unknown:
+                routeLineView.fillColor = [UIColor lightGrayColor];
+                routeLineView.strokeColor = [UIColor lightGrayColor];
+                break;
+                
+            default:
+                routeLineView.fillColor = [UIColor clearColor];
+                routeLineView.strokeColor = [UIColor clearColor];
+                break;
+        }
+        
         routeLineView.lineWidth = 5;
         return routeLineView;
-    }
+    } else if ([overlay isKindOfClass:[MKPolyline class]]) {
+        MKPolylineView *routeLineView = [[MKPolylineView alloc] initWithPolyline:(MKPolyline*)overlay];
+        routeLineView.fillColor = [UIColor purpleColor];
+        routeLineView.strokeColor = [UIColor purpleColor];
+        routeLineView.lineWidth = 5;
+        
+        return routeLineView;
+        
+    } else
     
     return nil;
 }

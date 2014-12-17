@@ -9,12 +9,16 @@
 #import "LocationDB.h"
 #import <FMDB.h>
 
-static NSString *sqlCreateTable = @"CREATE TABLE LocationInfoList (Latitude double, Longitude double, LocationTime text, CreatTime date)";
-static NSString *sqlInsertTable = @"INSERT INTO LocationInfoList (Latitude, Longitude, LocationTime, CreatTime) values(?, ?, ?, ?)";
+static NSString *sqlCreateTable = @"CREATE TABLE LocationInfoList (Latitude double, Longitude double, Speed double, Motion int, LocationTime text, CreatTime date)";
+static NSString *sqlInsertTable = @"INSERT INTO LocationInfoList (Latitude, Longitude, Speed, Motion, LocationTime, CreatTime) values(?, ?, ?, ?, ?, ?)";
 static NSString *sqlQueryAllTable = @"SELECT * FROM LocationInfoList order by LocationTime asc";
-static NSString *sqlQueryTable = @"SELECT * FROM LocationInfoList WHERE LocationTime >= ? and LocationTime < ? order by LocationTime asc";
+static NSString *sqlQueryTable = @"SELECT * FROM LocationInfoList WHERE LocationTime >= ? and LocationTime <= ? order by LocationTime asc";
 
 @implementation LocationInfo
+
+- (void)setSpeed:(CGFloat)speed {
+    _speed = speed * 3.6f;
+}
 
 @end
 
@@ -34,7 +38,8 @@ static NSString *sqlQueryTable = @"SELECT * FROM LocationInfoList WHERE Location
         self.dbPath = [[NSString getDocumentDirectory] stringByAppendingPathComponent:@"LocationInfo.sqlite"];
         [self createLocationInfoTable:self.dbPath];
         self.dbBase = [FMDatabase databaseWithPath:self.dbPath];
-        self.dbQueue = [FMDatabaseQueue databaseQueueWithPath:self.dbPath];
+//        [self.dbBase openWithFlags:SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FILEPROTECTION_NONE];
+        self.dbQueue = [FMDatabaseQueue databaseQueueWithPath:self.dbPath flags:SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|SQLITE_OPEN_FILEPROTECTION_NONE];
     }
     
     return self;
@@ -74,11 +79,13 @@ static NSString *sqlQueryTable = @"SELECT * FROM LocationInfoList WHERE Location
         [db executeUpdate:sqlInsertTable,
          [NSNumber numberWithDouble:info.coordinate.latitude],
          [NSNumber numberWithDouble:info.coordinate.longitude],
+         [NSNumber numberWithDouble:info.speed],
+         [NSNumber numberWithInteger:info.motion],
          info.date,
          [NSDate date]];
         
         if ([db hadError]) {
-            JBLog(JL_ERROR, @"Fail to insert customerInfo to customerInfo.sqlite, %d, %@", [db lastErrorCode], [db lastErrorMessage]);
+            JBLog(JL_ERROR, @"Fail to insert LocationInfo to LocationInfo.sqlite, %d, %@", [db lastErrorCode], [db lastErrorMessage]);
             *rollback = YES;
             result = NO;
         }
@@ -94,7 +101,7 @@ static NSString *sqlQueryTable = @"SELECT * FROM LocationInfoList WHERE Location
         
         FMResultSet *resultSet = [db executeQuery:sqlQueryTable, [NSString stringWithFormat:@"%@ 00:00:00", date], [NSString stringWithFormat:@"%@ 23:59:59", date]];
         if ([db hadError]) {
-            JBLog(JL_ERROR, @"Fail to insert customerInfo to customerInfo.sqlite, %d, %@", [db lastErrorCode], [db lastErrorMessage]);
+            JBLog(JL_ERROR, @"Fail to query LocationInfo from LocationInfo.sqlite, %d, %@", [db lastErrorCode], [db lastErrorMessage]);
             *rollback = YES;
             return;
         }
@@ -104,6 +111,8 @@ static NSString *sqlQueryTable = @"SELECT * FROM LocationInfoList WHERE Location
             info.coordinate = CLLocationCoordinate2DMake([resultSet doubleForColumn:@"Latitude"],
                                                          [resultSet doubleForColumn:@"Longitude"]);
             info.date = [resultSet stringForColumn:@"LocationTime"];
+            info.motion = [resultSet intForColumn:@"Motion"];
+            info.speed = [resultSet doubleForColumn:@"Speed"];
             [locationInfos addObject:info];
         }
         [resultSet close];
